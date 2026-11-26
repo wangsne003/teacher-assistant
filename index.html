@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>課堂小幫手 — 語音教師助理</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- 輕量拼音套件：用於中文姓名同音字模糊比對（離線時會自動優雅降級） -->
+  <script defer src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.26.0/dist/index.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- 頂部主導覽列 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">🎓</span>
+        <div>
+          <h1 class="brand-title">課堂小幫手</h1>
+          <span class="brand-sub">語音教師助理工具箱</span>
+        </div>
+      </div>
+
+      <!-- 多班級快速切換 -->
+      <div class="class-switcher">
+        <label for="classSelect" class="sr-only">切換班級</label>
+        <span class="switcher-label">目前班級</span>
+        <select id="classSelect" class="select-input"></select>
+        <button id="btnQuickAddClass" class="btn btn-ghost btn-sm" title="新增班級">＋ 新增班級</button>
+      </div>
+
+      <!-- 同步狀態與設定 -->
+      <div class="topbar-actions">
+        <div id="syncBadge" class="sync-badge sync-local" title="資料儲存狀態">
+          <span class="sync-dot"></span>
+          <span id="syncText">本機模式</span>
+        </div>
+        <button id="btnRefreshCloud" class="btn btn-ghost btn-sm hidden" title="從試算表重新同步">↻ 同步</button>
+        <button id="btnOpenSettings" class="btn btn-outline btn-sm">⚙️ GAS 與語音設定</button>
+      </div>
+    </header>
+
+    <!-- 語音助理控制列（常駐頂部，所有工具共用） -->
+    <section class="voice-bar" aria-label="語音助理控制列">
+      <div class="voice-controls">
+        <button id="btnVoiceToggle" class="btn btn-voice" type="button">
+          <span class="mic-icon">🎙️</span>
+          <span id="voiceBtnLabel">開啟語音監聽</span>
+        </button>
+        <button id="btnPushToTalk" class="btn btn-secondary btn-sm" type="button" title="按住說話（或按住鍵盤空白鍵）">
+          按住說話 (Space)
+        </button>
+        <label class="toggle-chip" title="開啟後需說喚醒詞（如「小幫手...」）才會觸發，避免上課誤判">
+          <input type="checkbox" id="chkWakeWord" checked />
+          <span>喚醒詞：<strong id="wakeWordDisplay">小幫手</strong></span>
+        </label>
+        <label class="toggle-chip" title="執行指令後自動用語音回報結果">
+          <input type="checkbox" id="chkTtsEnabled" checked />
+          <span>語音播報</span>
+        </label>
+      </div>
+
+      <div class="voice-status-box">
+        <div id="voiceTranscript" class="voice-transcript">
+          提示：試著說「小幫手幫王小明加一分」或「小幫手抽籤」（也可在右側輸入文字模擬指令）
+        </div>
+        <div class="voice-quick-actions">
+          <form id="cmdSimulateForm" class="cmd-sim-form">
+            <input
+              id="cmdSimulateInput"
+              type="text"
+              placeholder="輸入指令測試，例如：幫1號加2分、抽籤"
+              autocomplete="off"
+            />
+            <button type="submit" class="btn btn-primary btn-sm">執行</button>
+          </form>
+          <button id="btnUndo" class="btn btn-warning btn-sm" disabled title="復原上一筆加扣分紀錄">
+            ↩ 復原
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 工具插件分頁列（由 PluginManager 動態渲染） -->
+    <nav id="toolTabs" class="tool-tabs" aria-label="教師工具切換"></nav>
+
+    <!-- 主工具畫布 -->
+    <main id="toolViewport" class="tool-viewport"></main>
+  </div>
+
+  <!-- Toast 通知區 -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- 設定彈窗（GAS API + 語音設定） -->
+  <div id="settingsModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="settingsTitle">⚙️ 系統與 GAS 後端設定</h2>
+        <button class="btn-icon-close" data-close-modal="settingsModal" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="inputGasUrl">Google Apps Script Web App 網址（選填）</label>
+          <input
+            id="inputGasUrl"
+            type="url"
+            class="text-input"
+            placeholder="https://script.google.com/macros/s/xxxxx/exec"
+          />
+          <p class="help-text">留空則使用瀏覽器本機儲存（localStorage）運作，設定後會自動同步至 Google 試算表。</p>
+        </div>
+
+        <div class="form-group">
+          <label for="inputGasToken">API 安全金鑰（需與 GAS 端 API_TOKEN 一致）</label>
+          <input
+            id="inputGasToken"
+            type="password"
+            class="text-input"
+            placeholder="例如：teacher-secret-2026"
+          />
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label for="inputWakeWord">語音喚醒詞</label>
+            <input id="inputWakeWord" type="text" class="text-input" value="小幫手" />
+          </div>
+          <div class="form-group">
+            <label for="inputDefaultReason">預設加扣分原因</label>
+            <input id="inputDefaultReason" type="text" class="text-input" value="課堂表現" />
+          </div>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <div class="cloud-tools-box">
+          <p class="help-text"><strong>雲端同步工具：</strong></p>
+          <div class="btn-row">
+            <button id="btnTestGas" type="button" class="btn btn-outline btn-sm">🔌 測試 GAS 連線</button>
+            <button id="btnPushLocalToGas" type="button" class="btn btn-secondary btn-sm">☁️ 將目前本機名單上傳至試算表</button>
+            <button id="btnPullFromGas" type="button" class="btn btn-primary btn-sm">⬇️ 從試算表載入最新資料</button>
+          </div>
+          <div id="gasTestResult" class="test-result hidden"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal="settingsModal">取消</button>
+        <button id="btnSaveSettings" type="button" class="btn btn-primary">儲存設定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 新增班級彈窗 -->
+  <div id="addClassModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="addClassTitle">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h2 id="addClassTitle">➕ 新增班級</h2>
+        <button class="btn-icon-close" data-close-modal="addClassModal" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="inputNewClassName">班級名稱</label>
+          <input id="inputNewClassName" type="text" class="text-input" placeholder="例如：七年甲班、302 資科班" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal="addClassModal">取消</button>
+        <button id="btnConfirmAddClass" type="button" class="btn btn-primary">建立班級</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 核心模組（無須建置工具，支援本地開啟與靜態託管） -->
+  <script defer src="js/core/pinyin-util.js"></script>
+  <script defer src="js/core/api-client.js"></script>
+  <script defer src="js/core/store.js"></script>
+  <script defer src="js/core/voice-engine.js"></script>
+  <script defer src="js/core/plugin-manager.js"></script>
+
+  <!-- 內建工具插件（未來新增工具只需在這裡多掛一個 JS 檔案） -->
+  <script defer src="js/tools/score-tool.js"></script>
+  <script defer src="js/tools/lottery-tool.js"></script>
+  <script defer src="js/tools/roster-tool.js"></script>
+  <script defer src="js/tools/stats-tool.js"></script>
+
+  <!-- 應用程式啟動點 -->
+  <script defer src="js/app.js"></script>
+</body>
+</html>
