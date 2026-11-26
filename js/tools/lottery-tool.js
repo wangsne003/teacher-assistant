@@ -96,6 +96,35 @@
     icon: '🎲',
     order: 20,
 
+    draw(ctx, count) {
+      const msg = executeDraw(ctx, count || 1);
+      ctx.plugins.renderActive();
+      return msg;
+    },
+
+    reset(ctx) {
+      const classId = ctx.store.getActiveClassId();
+      getDrawnSet(classId).clear();
+      lastWinners = [];
+      const msg = '已重置本班抽籤名單';
+      ctx.voice.speak(msg);
+      ctx.toast(msg, 'success');
+      ctx.plugins.renderActive();
+      return msg;
+    },
+
+    setNoRepeat(flag) {
+      noRepeat = Boolean(flag);
+    },
+
+    getPoolStats(ctx) {
+      const classId = ctx.store.getActiveClassId();
+      const students = ctx.store.getStudentsByClass(classId);
+      const drawnSet = getDrawnSet(classId);
+      const remaining = students.filter((s) => !drawnSet.has(s.student_id)).length;
+      return { total: students.length, remaining };
+    },
+
     commands: [
       {
         pattern: /^(?:重置|重新|清空)抽籤/,

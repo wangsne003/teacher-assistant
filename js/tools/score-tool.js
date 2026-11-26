@@ -36,6 +36,18 @@
     icon: '⭐',
     order: 10,
 
+    setSort(mode) {
+      if (['seat', 'score', 'name'].includes(mode)) sortBy = mode;
+    },
+
+    setGroupFilter(group) {
+      filterGroup = group || 'ALL';
+    },
+
+    flashStudent(studentId, type) {
+      lastFlashed = { studentId, type: type || 'plus', ts: Date.now() };
+    },
+
     commands: [
       {
         // 全班加減分，例如：「全班加一分」「幫全班加 2 分」
