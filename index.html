@@ -49,26 +49,29 @@
         <button id="btnPushToTalk" class="btn btn-secondary btn-sm" type="button" title="按住說話（或按住鍵盤空白鍵）">
           按住說話 (Space)
         </button>
-        <label class="toggle-chip" title="開啟後需說喚醒詞（如「小幫手...」）才會觸發，避免上課誤判">
+        <label class="toggle-chip" title="開啟後需說喚醒詞（可自訂多個暱稱，如「小幫手, 麥克」）才會觸發">
           <input type="checkbox" id="chkWakeWord" checked />
-          <span>喚醒詞：<strong id="wakeWordDisplay">小幫手</strong></span>
+          <span>喚醒暱稱：<strong id="wakeWordDisplay">小幫手, 麥克</strong></span>
         </label>
         <label class="toggle-chip" title="執行指令後自動用語音回報結果">
           <input type="checkbox" id="chkTtsEnabled" checked />
           <span>語音播報</span>
         </label>
+        <button id="btnVoiceHelp" class="btn btn-secondary btn-sm" type="button" title="查看所有支援的口語指令">
+          💡 語音指令小抄
+        </button>
       </div>
 
       <div class="voice-status-box">
         <div id="voiceTranscript" class="voice-transcript">
-          提示：試著說「小幫手幫王小明加一分」或「小幫手抽籤」（也可在右側輸入文字模擬指令）
+          提示：試著說「麥克我要抽籤」、「小幫手幫王小名加一分」、「麥克切到七年乙班」或「麥克依分數排序」
         </div>
         <div class="voice-quick-actions">
           <form id="cmdSimulateForm" class="cmd-sim-form">
             <input
               id="cmdSimulateInput"
               type="text"
-              placeholder="輸入指令測試，例如：幫1號加2分、抽籤"
+              placeholder="輸入指令測試，如：麥克我要抽籤"
               autocomplete="off"
             />
             <button type="submit" class="btn btn-primary btn-sm">執行</button>
@@ -121,13 +124,25 @@
 
         <div class="form-row-2">
           <div class="form-group">
-            <label for="inputWakeWord">語音喚醒詞</label>
-            <input id="inputWakeWord" type="text" class="text-input" value="小幫手" />
+            <label for="inputWakeWord">語音喚醒暱稱（可設多個，用逗號分隔）</label>
+            <input id="inputWakeWord" type="text" class="text-input" value="小幫手, 麥克" placeholder="例如：小幫手, 麥克, Mike" />
+            <p class="help-text">支援拼音同音容錯（說「麥可」也能喚醒「麥克」）。</p>
           </div>
           <div class="form-group">
             <label for="inputDefaultReason">預設加扣分原因</label>
             <input id="inputDefaultReason" type="text" class="text-input" value="課堂表現" />
           </div>
+        </div>
+
+        <div class="form-group">
+          <label for="inputGeminiKey">🤖 Gemini API Key（選填 — 開啟 AI 進階口語理解）</label>
+          <input
+            id="inputGeminiKey"
+            type="password"
+            class="text-input"
+            placeholder="留空即使用內建免費智慧語音引擎；填入後可理解超複雜長句"
+          />
+          <p class="help-text">僅儲存在本機瀏覽器。本地引擎沒命中時，才會自動交由 Gemini 2.5 Flash 解析複雜指令（如一次幫多位同學加分）。</p>
         </div>
 
         <div class="settings-divider"></div>
@@ -169,10 +184,45 @@
     </div>
   </div>
 
+  <!-- 語音指令小抄彈窗 -->
+  <div id="voiceHelpModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="voiceHelpTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="voiceHelpTitle">💡 智慧語音指令小抄</h2>
+        <button class="btn-icon-close" data-close-modal="voiceHelpModal" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="help-text" style="margin-top:0;margin-bottom:12px;">
+          說法非常自由！只要開頭喊你設定的暱稱（例如 <strong>小幫手</strong> 或 <strong>麥克</strong>），後面直接講自然口語（加上「我要…」「幫我…」「來…」都可以）：
+        </p>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th style="width:110px;">功能分類</th><th>這樣說就會執行</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>🎲 抽籤機</strong></td><td>「麥克我要抽籤」「麥克幫我抽三位同學」「麥克重置抽籤」「麥克還剩幾個人沒抽」</td></tr>
+              <tr><td><strong>⭐ 加扣分</strong></td><td>「麥克幫王小名加一分」「麥克 5 號表現很好加兩分」「麥克全班加一分」「麥克第一組扣一分」</td></tr>
+              <tr><td><strong>🏫 切換班級</strong></td><td>「麥克切到七年乙班」「麥克換成七年甲班」</td></tr>
+              <tr><td><strong>🧭 切換頁面</strong></td><td>「麥克我要看統計」「麥克打開名單」「麥克回到加分板」「麥克開抽籤機」</td></tr>
+              <tr><td><strong>🔍 排序篩選</strong></td><td>「麥克依分數排序」「麥克依座號排序」「麥克只看第一組」「麥克顯示全部組別」</td></tr>
+              <tr><td><strong>💬 語音查詢</strong></td><td>「麥克王小明現在幾分」「麥克第一名是誰」</td></tr>
+              <tr><td><strong>⚙️ 系統操作</strong></td><td>「麥克復原」「麥克同步試算表」「麥克關閉語音播報」「麥克停止監聽」</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-close-modal="voiceHelpModal">知道了</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 核心模組（無須建置工具，支援本地開啟與靜態託管） -->
   <script defer src="js/core/pinyin-util.js"></script>
   <script defer src="js/core/api-client.js"></script>
   <script defer src="js/core/store.js"></script>
+  <script defer src="js/core/smart-nlu.js"></script>
   <script defer src="js/core/voice-engine.js"></script>
   <script defer src="js/core/plugin-manager.js"></script>
 
