@@ -99,27 +99,31 @@
 
     _handleTranscript(rawText, bypassWakeWord) {
       const settings = TeacherApp.store.settings;
-      const wakeWord = (settings.wakeWord || '小幫手').trim();
+      const wakeWordSetting = (settings.wakeWord || '小幫手').trim();
       const requireWake = settings.requireWakeWord && !bypassWakeWord;
 
       let commandText = rawText;
+      let matchedAlias = '';
 
-      if (requireWake && wakeWord) {
-        // 允許喚醒詞出現在句子中（例如「好，小幫手幫王小明加一分」），亦容錯「小幫手/幫手」
-        const idx = rawText.indexOf(wakeWord);
-        if (idx === -1) {
+      if (requireWake && wakeWordSetting) {
+        const hit = TeacherApp.smartNlu
+          ? TeacherApp.smartNlu.matchWakeWord(rawText, wakeWordSetting)
+          : { matched: rawText.includes(wakeWordSetting), commandText: rawText.split(wakeWordSetting).slice(1).join(wakeWordSetting).trim(), matchedAlias: wakeWordSetting };
+
+        if (!hit.matched) {
           this._notify({
             listening: this.isListening,
-            text: `（略過未含喚醒詞「${wakeWord}」的語句：「${rawText}」）`,
+            text: `（略過未含喚醒詞「${wakeWordSetting}」的語句：「${rawText}」）`,
           });
           return;
         }
-        commandText = rawText.slice(idx + wakeWord.length).replace(/^[，,、。\s]+/, '').trim();
+        commandText = hit.commandText;
+        matchedAlias = hit.matchedAlias || wakeWordSetting;
       }
 
       if (!commandText) {
         this.speak('我在，請說指令');
-        this._notify({ listening: this.isListening, text: `已喚醒「${wakeWord}」，請說指令...`, matched: true });
+        this._notify({ listening: this.isListening, text: `已喚醒「${matchedAlias || wakeWordSetting}」，請說指令...`, matched: true });
         return;
       }
 

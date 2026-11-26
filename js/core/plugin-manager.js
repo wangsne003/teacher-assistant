@@ -76,39 +76,34 @@
       plugin.render(this.viewportContainer, ctx);
     }
 
+    getPlugin(pluginId) {
+      return this.plugins.find((p) => p.id === pluginId) || null;
+    }
+
     /**
-     * 將語音或文字指令路由至對應的工具插件
-     * @returns {{ handled: boolean, pluginId?: string, message?: string }}
+     * 將語音或文字指令路由至智慧 NLU / 工具插件 / 選配 Gemini AI
+     * @returns {Promise<{ handled: boolean, pluginId?: string, message?: string, error?: string }>}
      */
-    dispatchCommand(commandText) {
+    async dispatchCommand(commandText) {
       const clean = String(commandText || '').trim();
       if (!clean) return { handled: false };
 
       const ctx = this.contextFactory();
 
-      // 內建全域指令：復原
-      if (/^(取消|復原|撤銷|還原)/.test(clean)) {
-        const res = ctx.store.undoLastScore();
-        if (res) {
-          const msg = `已復原 ${res.original.name} 的 ${res.original.delta > 0 ? '+' : ''}${res.original.delta} 分`;
-          ctx.voice.speak(msg);
-          ctx.toast(msg, 'warning');
-          return { handled: true, pluginId: 'global', message: msg };
-        }
-        const msg = '目前沒有可復原的紀錄';
-        ctx.voice.speak(msg);
-        ctx.toast(msg, 'warning');
-        return { handled: true, pluginId: 'global', message: msg };
+      // 第一層：強化版本地自然口語 NLU（涵蓋全網頁指令與自然句型）
+      if (TeacherApp.smartNlu) {
+        const localRes = TeacherApp.smartNlu.tryLocalDispatch(clean, ctx);
+        if (localRes.handled) return localRes;
       }
 
-      // 遍歷已註冊插件的語音指令規則
+      // 第二層：遍歷各工具插件自訂的語音指令規則（同時自動去除口語開頭「我要/幫我/請」方便未來新插件）
+      const stripped = TeacherApp.smartNlu ? TeacherApp.smartNlu.stripFillerWords(clean) : clean;
       for (const plugin of this.plugins) {
         if (!Array.isArray(plugin.commands)) continue;
         for (const cmd of plugin.commands) {
-          const match = clean.match(cmd.pattern);
+          const match = clean.match(cmd.pattern) || stripped.match(cmd.pattern);
           if (match) {
             const result = cmd.handler(match, ctx);
-            // 若指令要求自動切至該工具頁面
             if (cmd.autoSwitch !== false && this.activeId !== plugin.id) {
               this.activate(plugin.id);
             } else {
@@ -121,6 +116,11 @@
             };
           }
         }
+      }
+
+      // 第三層：若使用者已設定 Gemini API Key，自動啟用 AI 理解複雜口語
+      if (TeacherApp.smartNlu && ctx.store.settings.geminiApiKey) {
+        return await TeacherApp.smartNlu.tryGeminiDispatch(clean, ctx);
       }
 
       return { handled: false };

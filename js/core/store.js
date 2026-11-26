@@ -37,10 +37,11 @@
     return {
       gasUrl: '',
       gasToken: '',
-      wakeWord: '小幫手',
+      wakeWord: '小幫手, 麥克',
       requireWakeWord: true,
       ttsEnabled: true,
       defaultReason: '課堂表現',
+      geminiApiKey: '',
     };
   }
 
