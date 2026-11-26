@@ -26,6 +26,11 @@
       pinyinUtil: TeacherApp.pinyinUtil,
       plugins: TeacherApp.plugins,
       toast: showToast,
+      syncSettingsUi,
+      syncCloud: async () => {
+        await TeacherApp.api.flushQueue();
+        await pullFromCloud(false);
+      },
     };
   }
 
@@ -84,13 +89,15 @@
   function syncSettingsUi() {
     const s = TeacherApp.store.settings;
     document.getElementById('chkWakeWord').checked = Boolean(s.requireWakeWord);
-    document.getElementById('wakeWordDisplay').textContent = s.wakeWord || '小幫手';
+    document.getElementById('wakeWordDisplay').textContent = s.wakeWord || '小幫手, 麥克';
     document.getElementById('chkTtsEnabled').checked = Boolean(s.ttsEnabled);
 
     document.getElementById('inputGasUrl').value = s.gasUrl || '';
     document.getElementById('inputGasToken').value = s.gasToken || '';
-    document.getElementById('inputWakeWord').value = s.wakeWord || '小幫手';
+    document.getElementById('inputWakeWord').value = s.wakeWord || '小幫手, 麥克';
     document.getElementById('inputDefaultReason').value = s.defaultReason || '課堂表現';
+    const geminiEl = document.getElementById('inputGeminiKey');
+    if (geminiEl) geminiEl.value = s.geminiApiKey || '';
   }
 
   async function pullFromCloud(silent = false) {
@@ -162,13 +169,17 @@
     const voiceBtn = document.getElementById('btnVoiceToggle');
     const voiceBtnLabel = document.getElementById('voiceBtnLabel');
 
-    function handleCommand(cmdText, rawSpoken) {
-      const res = plugins.dispatchCommand(cmdText);
+    async function handleCommand(cmdText, rawSpoken) {
+      if (store.settings.geminiApiKey) {
+        transcriptEl.textContent = `⏳ 正在理解指令「${rawSpoken || cmdText}」...`;
+      }
+      const res = await plugins.dispatchCommand(cmdText);
       if (res.handled) {
         transcriptEl.textContent = `✅ 指令「${rawSpoken || cmdText}」→ ${res.message}`;
         transcriptEl.classList.add('matched');
       } else {
-        transcriptEl.textContent = `❓ 聽懂了「${cmdText}」，但沒有對應的工具指令`;
+        const extra = res.error ? `（${res.error}）` : '';
+        transcriptEl.textContent = `❓ 聽懂了「${cmdText}」，但沒有對應的網頁指令${extra}`;
         transcriptEl.classList.remove('matched');
         showToast(`未識別指令：「${cmdText}」`, 'warning');
       }
@@ -230,18 +241,32 @@
       store.saveSettings({ ttsEnabled: e.target.checked });
     });
 
-    // 文字模擬指令框
+    // 文字模擬指令框（支援直接輸入帶喚醒暱稱的句子，如「麥克我要抽籤」「麥可幫王小名加一分」）
     document.getElementById('cmdSimulateForm').addEventListener('submit', (e) => {
       e.preventDefault();
       const input = document.getElementById('cmdSimulateInput');
       const raw = input.value.trim();
       if (!raw) return;
-      // 模擬框自動去掉開頭喚醒詞方便測試
-      const wake = store.settings.wakeWord || '小幫手';
-      const cleaned = raw.startsWith(wake) ? raw.slice(wake.length).replace(/^[，,\s]+/, '') : raw;
-      handleCommand(cleaned, raw);
+      const wakeSetting = store.settings.wakeWord || '小幫手, 麥克';
+      const wakeHit = TeacherApp.smartNlu
+        ? TeacherApp.smartNlu.matchWakeWord(raw, wakeSetting)
+        : { matched: false, commandText: raw };
+      const cleaned = wakeHit.matched ? wakeHit.commandText : raw;
+      if (!cleaned && wakeHit.matched) {
+        voice.speak('我在，請說指令');
+        transcriptEl.textContent = `已喚醒「${wakeHit.matchedAlias}」，請說指令...`;
+        transcriptEl.classList.add('matched');
+      } else {
+        handleCommand(cleaned, raw);
+      }
       input.value = '';
     });
+
+    // 語音指令小抄
+    const helpBtn = document.getElementById('btnVoiceHelp');
+    if (helpBtn) {
+      helpBtn.addEventListener('click', () => openModal('voiceHelpModal'));
+    }
 
     // 復原按鈕
     document.getElementById('btnUndo').addEventListener('click', () => {
@@ -262,10 +287,12 @@
     document.getElementById('btnSaveSettings').addEventListener('click', () => {
       const gasUrl = document.getElementById('inputGasUrl').value.trim();
       const gasToken = document.getElementById('inputGasToken').value.trim();
-      const wakeWord = document.getElementById('inputWakeWord').value.trim() || '小幫手';
+      const wakeWord = document.getElementById('inputWakeWord').value.trim() || '小幫手, 麥克';
       const defaultReason = document.getElementById('inputDefaultReason').value.trim() || '課堂表現';
+      const geminiEl = document.getElementById('inputGeminiKey');
+      const geminiApiKey = geminiEl ? geminiEl.value.trim() : '';
 
-      store.saveSettings({ gasUrl, gasToken, wakeWord, defaultReason });
+      store.saveSettings({ gasUrl, gasToken, wakeWord, defaultReason, geminiApiKey });
       api.configure(gasUrl, gasToken);
       syncSettingsUi();
       closeModal('settingsModal');
